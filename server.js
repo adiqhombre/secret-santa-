@@ -21,7 +21,7 @@ const pool = new Pool({
   app.use(cors({
     origin: [
       'http://localhost:3000',
-      'https://your-vercel-app.vercel.app' // Replace with your actual Vercel URL
+      'https://secret-santa-frontend-hw4a3zsfm-adrians-projects-5adf7053.vercel.app/' // Replace with your actual Vercel URL
     ],
     credentials: true
   }));
