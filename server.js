@@ -1,10 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// Admin password hash (password: Santa2025!)
+// Pre-hashed for security - generated with bcrypt.hashSync('Santa2025!', 10)
+const ADMIN_PASSWORD_HASH = '$2b$10$QiiFsp/N4rOLdrQ6e782Te2pIptAN.F4BuPsJvxvKawfjviNi3jim';
 
 // Database connection
 const pool = new Pool({
@@ -73,15 +78,18 @@ app.get('/api/users', async (req, res) => {
 // Add a new user
 app.post('/api/users', async (req, res) => {
   const { name, password } = req.body;
-  
+
   if (!name || !password) {
     return res.status(400).json({ error: 'Name and password required' });
   }
 
   try {
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const result = await pool.query(
       'INSERT INTO users (name, password) VALUES ($1, $2) RETURNING id, name',
-      [name, password]
+      [name, hashedPassword]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -112,18 +120,51 @@ app.delete('/api/users/:name', async (req, res) => {
 // Login
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  
+
   try {
+    // Get user by username (including password hash for comparison)
     const result = await pool.query(
-      'SELECT id, name FROM users WHERE LOWER(name) = LOWER($1) AND password = $2',
-      [username, password]
+      'SELECT id, name, password FROM users WHERE LOWER(name) = LOWER($1)',
+      [username]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
-    res.json({ user: result.rows[0] });
+
+    const user = result.rows[0];
+
+    // Compare provided password with stored hash
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Return user without password
+    res.json({ user: { id: user.id, name: user.name } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Admin verification
+app.post('/api/admin/verify', async (req, res) => {
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ error: 'Password required' });
+  }
+
+  try {
+    const isValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid admin password' });
+    }
+
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
